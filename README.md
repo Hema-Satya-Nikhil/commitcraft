@@ -2,7 +2,7 @@
 
 CommitCraft will turn GitHub repository commit history into readable, deterministic release notes.
 
-This repository implements **Milestone 3: bounded GitHub API integration**, building on the deterministic domain engine from `f3ffd22` and foundation commit `428ced2`. Production UI remains a future milestone.
+This repository implements **Milestone 4: production UI and application integration**, building on the deterministic domain engine from `f3ffd22` and bounded GitHub integration from `8d00f53`. The frontend is a static Vite application; no server-side proxy, database, authentication, or AI service is required.
 
 ## Requirements
 
@@ -24,7 +24,7 @@ The committed `package-lock.json` is the source of truth for dependency installa
 npm run dev
 ```
 
-Vite serves the development placeholder at `http://localhost:5173`.
+Vite serves the CommitCraft application at `http://localhost:5173`.
 
 ## Tests
 
@@ -63,8 +63,8 @@ No environment variables are currently required. `.env.example` documents this a
 
 1. Foundation and reproducible build (complete)
 2. Independent deterministic release-note domain engine (complete)
-3. GitHub API integration with bounded pagination, Link-header detection, rate-limit handling, and cancellation (current milestone)
-4. Responsive production UI
+3. GitHub API integration with bounded pagination, Link-header detection, rate-limit handling, and cancellation (complete)
+4. Responsive production UI and application integration (current milestone)
 5. Hardening, accessibility, and release verification
 
 ## Domain API (Milestone 2)
@@ -150,3 +150,24 @@ Successful retrieval returns:
 When a next page exists, retrieval stops after the first page, `historyComplete` is `false`, `truncated` is `true`, and a warning is included. Empty histories with no next page are complete. Failed, malformed, timed-out, or cancelled operations reject with a `GithubError` carrying a stable `category`, optional HTTP `status`, safe user-facing `message`, parsed rate-limit data, and `retrieval.historyComplete: false`; raw error response bodies and request secrets are not exposed. Categories include `invalid-repository`, `not-found`, `unauthorized`, `forbidden`, `rate-limit`, `too-many-requests`, `server`, `network`, `timeout`, `malformed-response`, and `cancellation`.
 
 Pass an `AbortSignal` to `fetchRepository` to cancel repository or commit requests. `timeoutMs` bounds each request; cancellation and timeout are reported separately. The infrastructure makes no automatic retries and does not contain UI stale-response logic. Its tests use mocked fetch responses only; `npm test` remains offline.
+
+## Application workflow (Milestone 4)
+
+The production workflow is implemented in `src/App.jsx` and uses the domain and infrastructure contracts directly. Enter a public GitHub URL or `owner/repository`, then submit with the button or Enter. The interface validates locally before making a request, shows a loading state, and renders deterministic Markdown from the retrieved commits. It provides repository metadata, entry and filtered-merge counts, complete/truncated history coverage, prominent incomplete-history warnings, empty-history messaging, retry, and New analysis controls.
+
+The result toolbar copies the generated Markdown to the clipboard and downloads the same content as a sanitized `<repository>-release-notes.md` file. Clipboard failure is shown as failure feedback; no success state is displayed unless the browser operation resolves. New analyses cancel an in-flight request, and request identities prevent stale responses from replacing the latest result. Intentional cancellation is not shown as an ordinary network error. The UI keeps a previous successful result visible during an appropriate retry.
+
+The UI has responsive desktop/mobile layouts, keyboard-visible focus states, semantic labels and live status regions, restrained loading motion, and `prefers-reduced-motion` support. No GitHub token or `VITE_*` secret is used by the frontend.
+
+## Static deployment
+
+The build output is the `dist/` directory. For Vercel, import this repository and use:
+
+- Framework preset: **Vite** (or Other)
+- Build command: `npm run build`
+- Output directory: `dist`
+- Install command: `npm ci`
+
+No environment variables are required. After deployment, open the assigned HTTPS URL and verify that the initial workspace renders, submit a known public repository, confirm the Markdown result, and test Copy Markdown and Download. The application calls GitHub's public REST API directly from the browser, so a live verification requires browser network access and GitHub availability.
+
+For a local static verification, run `npm run build` and serve `dist/` with any static server. The included Dockerfile builds the Vite assets and serves them with Nginx on internal port `4173`.
