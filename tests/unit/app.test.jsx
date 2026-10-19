@@ -142,7 +142,7 @@ describe('App', () => {
     submitRepository('octo/hello-world');
 
     await waitFor(() => expect(screen.getByText('Analysis complete')).toBeInTheDocument());
-    expect(screen.getAllByText('octo/hello-world')).toHaveLength(2);
+    expect(screen.getAllByText('octo/hello-world').filter((node) => !node.closest('.print-sheet'))).toHaveLength(2);
     expect(screen.getByText('3 entries')).toBeInTheDocument();
     expect(screen.getByText('merge commits filtered').parentElement).toHaveTextContent('1');
 
@@ -166,8 +166,8 @@ describe('App', () => {
     submitRepository('octo/hello-world');
 
     await waitFor(() => expect(screen.getByText('History is truncated')).toBeInTheDocument());
-    expect(screen.getByText(/These notes cover the first 100 commits/)).toBeInTheDocument();
-    expect(screen.getByText('Partial')).toBeInTheDocument();
+    expect(screen.getByText('History is truncated').parentElement).toHaveTextContent(/These notes cover the first 100 commits/);
+    expect(screen.getAllByText('Partial').filter((node) => !node.closest('.print-sheet'))).toHaveLength(1);
     expect(screen.getByLabelText('Generated Markdown')).toHaveTextContent('## Warnings');
     expect(screen.getByRole('button', { name: 'Copy release notes as Markdown' })).toBeInTheDocument();
   });
@@ -244,9 +244,9 @@ describe('App', () => {
     expect(first.options.signal.aborted).toBe(true);
 
     second.resolve(retrieved({ repository: secondRepository, commits: [] }));
-    await waitFor(() => expect(screen.getAllByText('octo/second')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText('octo/second').filter((node) => !node.closest('.print-sheet'))).toHaveLength(2));
     first.resolve(retrieved({ repository: firstRepository, commits }));
-    expect(screen.getAllByText('octo/second')).toHaveLength(2);
+    expect(screen.getAllByText('octo/second').filter((node) => !node.closest('.print-sheet'))).toHaveLength(2);
     expect(screen.queryByText('octo/first')).not.toBeInTheDocument();
     expect(screen.getByText('No release-note entries found')).toBeInTheDocument();
   });
@@ -304,6 +304,49 @@ describe('App', () => {
 
     expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
     expect(clickedLink).toEqual({ download: 'Octo-Release-Notes-release-notes.md', href: 'blob:commitcraft-test' });
+  });
+
+  it('opens the browser print dialog and prepares linked commits for PDF export', async () => {
+    const linkedCommits = commits.map((commit) => ({ ...commit, url: `https://github.com/octo/hello-world/commit/${commit.sha}` }));
+    fetchGithubRepositoryMock.mockResolvedValue(retrieved({ commits: linkedCommits }));
+    const originalPrint = window.print;
+    const print = vi.fn();
+    Object.defineProperty(window, 'print', { configurable: true, value: print });
+    try {
+      renderApp();
+      submitRepository('octo/hello-world');
+      await waitFor(() => expect(screen.getByLabelText('Generated Markdown')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Export release notes as PDF' }));
+
+      expect(print).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('status')).toHaveTextContent('Choose “Save as PDF”');
+      const printSheet = document.querySelector('.print-sheet');
+      expect(printSheet).toHaveAttribute('hidden');
+      expect(printSheet).toHaveTextContent('octo/hello-world');
+      expect(printSheet.querySelector('a[href="https://github.com/octo/hello-world/commit/abcdef1"]')).toBeTruthy();
+    } finally {
+      Object.defineProperty(window, 'print', { configurable: true, value: originalPrint });
+    }
+  });
+
+  it('reports a print failure without changing the generated Markdown', async () => {
+    fetchGithubRepositoryMock.mockResolvedValue(retrieved());
+    const originalPrint = window.print;
+    const print = vi.fn(() => { throw new Error('print unavailable'); });
+    Object.defineProperty(window, 'print', { configurable: true, value: print });
+    try {
+      renderApp();
+      submitRepository('octo/hello-world');
+      await waitFor(() => expect(screen.getByLabelText('Generated Markdown')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Export release notes as PDF' }));
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not open the PDF print dialog');
+      expect(screen.getByLabelText('Generated Markdown')).toHaveTextContent('# Release Notes');
+    } finally {
+      Object.defineProperty(window, 'print', { configurable: true, value: originalPrint });
+    }
   });
 
   it('resets to a new empty analysis', async () => {
