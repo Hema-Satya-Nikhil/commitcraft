@@ -2,7 +2,7 @@
 
 CommitCraft will turn GitHub repository commit history into readable, deterministic release notes.
 
-This repository is currently at **Milestone 1: project foundation**. The domain engine, GitHub integration, and production UI are intentionally not implemented yet.
+This repository implements **Milestone 2: independent deterministic release-note domain engine**, on foundation commit `428ced2`. GitHub integration and production UI are future milestones.
 
 ## Requirements
 
@@ -61,8 +61,52 @@ No environment variables are currently required. `.env.example` documents this a
 
 ## Planned milestones
 
-1. Foundation and reproducible build (current milestone)
-2. Independent deterministic release-note domain engine
+1. Foundation and reproducible build (complete)
+2. Independent deterministic release-note domain engine (current milestone)
 3. GitHub API integration with bounded pagination, Link-header detection, rate-limit handling, and cancellation
 4. Responsive production UI
 5. Hardening, accessibility, and release verification
+
+## Domain API (Milestone 2)
+
+All public functions are named ES module exports from `src/domain/index.js` and their individual modules. They have no external imports, UI dependencies, network access, clock reads, randomness, or input mutation. They operate on ordinary JavaScript data records; no retrieval is performed.
+
+```js
+import { validateRepository, normalizeCommit, classifyCommit, generateReleaseNotes } from './src/domain/index.js';
+
+validateRepository('octocat/Hello-World');
+// { valid: true, repository: { owner, name, fullName, url }, error: null }
+
+const commits = [{ sha: 'abcdef1234567', message: 'feat(cli): add export', date: '2026-01-02T00:00:00Z' }];
+normalizeCommit(commits[0]);
+classifyCommit(commits[0]);
+const result = generateReleaseNotes(commits, {
+  metadata: { truncated: true, retrievedCount: 100, pagesFetched: 2, reason: 'caller limit' },
+  warnings: ['Caller supplied a partial history.'],
+});
+console.log(result.markdown);
+```
+
+### Validation and normalization
+
+- `validateRepository(input)` accepts trimmed `owner/repository` identifiers and HTTP(S) `github.com` or `www.github.com` URLs, with an optional `.git` suffix and URL trailing slash. Owner/repository case is preserved. Owners must be 1–39 alphanumeric/hyphen characters, without leading/trailing or consecutive hyphens. Repository names allow 1–100 alphanumeric, `.`, `_`, and `-` characters, except `.` and `..`. Extra paths, query strings, fragments, credentials, explicit ports, encoded paths, SSH URLs, and other hosts/protocols are rejected. Invalid input returns `{ valid: false, repository: null, error }` rather than throwing.
+- `normalizeCommit(record)` accepts flat `{ sha, message, date, parents }` records or GitHub-shaped `{ sha, commit: { message, committer: { date }, author: { date } }, parents }` records. Flat fields take precedence; nested committer date precedes author date. SHAs are trimmed, lowercased hexadecimal strings of 7–40 or 64 characters. Message line endings become LF, surrounding whitespace is removed, and the first line becomes `subject`.
+- Missing/invalid identity or message yields `null`. Missing/invalid dates yield `timestamp: null` and `date: null` while retaining the commit. Dates require explicit zoned ISO timestamps (`Z` or `±HH:MM`, optional 1–3 fractional digits) and valid calendar/time components, avoiding environment-dependent date parsing. Valid dates become UTC ISO strings and numeric epoch milliseconds. Unknown fields are ignored; malformed optional fields do not invalidate otherwise usable records.
+
+### Classification, filtering, and ordering
+
+- `classifyCommit(messageOrRecord)` accepts a message string or `{ message, isMerge?, parents? }`, returning `{ section, type, scope, description, breaking, excluded }`; invalid messages yield `null`.
+- Conventional subjects use `type(scope)!: description` with scope/`!` optional. Types are case-insensitive. `feat` maps to Features, `fix` to Bug Fixes, `perf` to Performance, `docs` to Documentation, and `refactor` to Refactoring. `chore`, `build`, `ci`, and `test` map to Maintenance. Unknown prefixes and ordinary messages go to Other Changes. Conventional prefixes are removed from displayed descriptions; scopes are retained.
+- A conventional `!` or a line beginning `BREAKING CHANGE:` / `BREAKING-CHANGE:` with nonempty content puts the commit exclusively in Breaking Changes. Footer markers are case-sensitive; inline mentions are not markers.
+- Merge records (more than one parent, or subjects beginning `Merge pull request`, `Merge branch`, `Merge remote-tracking branch`, or `Merge tag`, case-insensitively) are excluded, even if they contain breaking markers. Squash messages and unrelated messages such as `Merge sort optimization` are retained. `isMerge` is exposed by normalization and honored by classification.
+- Stable section order is **Breaking Changes → Features → Bug Fixes → Performance → Documentation → Refactoring → Maintenance → Other Changes**, exported as frozen `RELEASE_SECTIONS`. Commits within each section sort by timestamp descending, then normalized full SHA ascending using code-point comparison. Missing/invalid dates sort last, still with SHA ascending ties.
+- Deduplication uses **only normalized SHA**: the first valid occurrence wins, even if a later duplicate has different data. Distinct SHAs with identical messages remain. Short/full SHAs are not resolved into one identity. Merge records participate in SHA deduplication before filtering.
+
+### Generation and retrieval metadata
+
+- `generateReleaseNotes(commits = [], options = {})` returns `{ markdown, sections, metadata, warnings, stats }`. Non-array input is treated as empty; malformed records are skipped with a count warning. `sections` always includes all eight sections and their normalized/classified commits; empty sections are omitted from Markdown. Empty results say `No release-note entries.`. Stats include `inputCount`, `includedCount`, `invalidCount`, `duplicateCount`, and `filteredCount`.
+- `options.metadata` is copied as supplied into the result and rendered in a Retrieval Metadata section with sorted keys. Arbitrary retrieval fields remain available, including nested data. Metadata should be JSON-compatible; unserializable values render a placeholder. `options.warnings` and `metadata.warnings` accept arrays of nonempty strings, preserved in that order and rendered under Warnings. Malformed optional values are ignored.
+- Explicit `metadata.truncated: true` adds an incomplete-history warning, including for empty results. Other metadata never causes pagination, retrying, inferred truncation, or any network decision. The caller owns retrieval and its interpretation.
+- Commit text, metadata, and warnings are escaped as Markdown text, including raw HTML. Full SHAs identify entries unambiguously. No current date is injected. Identical inputs produce identical Markdown; input order only matters for conflicting duplicates and supplied warnings.
+
+Run the focused offline domain suite with `npm test -- tests/unit`. It covers malformed inputs, classification, filtering, SHA-only deduplication, ordering, metadata/warnings, exact Markdown, repeatability, and plain-Node execution with browser/network/clock/randomness access disabled. `npm test` runs this suite plus the foundation test.
