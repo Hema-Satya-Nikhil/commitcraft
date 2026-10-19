@@ -2,7 +2,7 @@
 
 CommitCraft will turn GitHub repository commit history into readable, deterministic release notes.
 
-This repository implements **Milestone 2: independent deterministic release-note domain engine**, on foundation commit `428ced2`. GitHub integration and production UI are future milestones.
+This repository implements **Milestone 3: bounded GitHub API integration**, building on the deterministic domain engine from `f3ffd22` and foundation commit `428ced2`. Production UI remains a future milestone.
 
 ## Requirements
 
@@ -62,8 +62,8 @@ No environment variables are currently required. `.env.example` documents this a
 ## Planned milestones
 
 1. Foundation and reproducible build (complete)
-2. Independent deterministic release-note domain engine (current milestone)
-3. GitHub API integration with bounded pagination, Link-header detection, rate-limit handling, and cancellation
+2. Independent deterministic release-note domain engine (complete)
+3. GitHub API integration with bounded pagination, Link-header detection, rate-limit handling, and cancellation (current milestone)
 4. Responsive production UI
 5. Hardening, accessibility, and release verification
 
@@ -110,3 +110,43 @@ console.log(result.markdown);
 - Commit text, metadata, and warnings are escaped as Markdown text, including raw HTML. Full SHAs identify entries unambiguously. No current date is injected. Identical inputs produce identical Markdown; input order only matters for conflicting duplicates and supplied warnings.
 
 Run the focused offline domain suite with `npm test -- tests/unit`. It covers malformed inputs, classification, filtering, SHA-only deduplication, ordering, metadata/warnings, exact Markdown, repeatability, and plain-Node execution with browser/network/clock/randomness access disabled. `npm test` runs this suite plus the foundation test.
+
+## GitHub API integration (Milestone 3)
+
+The infrastructure API is exported from `src/infrastructure/index.js` and uses GitHub's public REST API without requiring authentication:
+
+```js
+import { createGithubClient } from './src/infrastructure/index.js';
+
+const client = createGithubClient();
+const result = await client.fetchRepository({ owner: 'octocat', name: 'Hello-World' }, { signal });
+// A successful validateRepository(...) result is accepted too.
+// { repository, commits, metadata }
+```
+
+`createGithubClient({ fetch, baseUrl, timeoutMs })` accepts an injected `fetch` implementation for offline tests and uses `https://api.github.com` by default. It performs exactly two requests on success: repository metadata and page 1 of commits with `per_page=100&page=1`. The fixed first-version policy is `requestedLimit: 100`, page size `100`, and maximum pages `1`; a `Link` header with `rel="next"` is detected but never followed.
+
+The normalized repository contains `owner`, `name`, `fullName`, `url`, and available metadata such as description and default branch. Normalized commits retain the domain fields (`sha`, `message`, `subject`, `timestamp`, `date`, and merge information) plus available `author`, `url`/`commitUrl`, and `parents` values. The infrastructure does not classify or deduplicate commits; callers pass them to the existing domain engine.
+
+Successful retrieval returns:
+
+```js
+{
+  repository,
+  commits,
+  metadata: {
+    requestedLimit: 100,
+    fetchedCount,
+    pagesFetched: 1,
+    hasNextPage,
+    historyComplete, // true only after success with no rel="next"
+    truncated,
+    warnings,
+    rateLimit,
+  },
+}
+```
+
+When a next page exists, retrieval stops after the first page, `historyComplete` is `false`, `truncated` is `true`, and a warning is included. Empty histories with no next page are complete. Failed, malformed, timed-out, or cancelled operations reject with a `GithubError` carrying a stable `category`, optional HTTP `status`, safe user-facing `message`, parsed rate-limit data, and `retrieval.historyComplete: false`; raw error response bodies and request secrets are not exposed. Categories include `invalid-repository`, `not-found`, `unauthorized`, `forbidden`, `rate-limit`, `too-many-requests`, `server`, `network`, `timeout`, `malformed-response`, and `cancellation`.
+
+Pass an `AbortSignal` to `fetchRepository` to cancel repository or commit requests. `timeoutMs` bounds each request; cancellation and timeout are reported separately. The infrastructure makes no automatic retries and does not contain UI stale-response logic. Its tests use mocked fetch responses only; `npm test` remains offline.
