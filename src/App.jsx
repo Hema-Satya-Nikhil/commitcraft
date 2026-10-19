@@ -19,15 +19,6 @@ function Icon({ name, size = 18 }) {
   return <svg {...common}><circle cx="12" cy="12" r="8" /></svg>;
 }
 
-function formatDate(value) {
-  if (!value) return 'Unknown date';
-  try {
-    return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
-  } catch {
-    return 'Unknown date';
-  }
-}
-
 function friendlyError(error) {
   const category = error?.category;
   const copy = {
@@ -59,8 +50,9 @@ function EmptyPreview() {
   return (
     <div className="preview-empty" data-testid="empty-preview">
       <div className="empty-icon"><Icon name="spark" size={21} /></div>
+      <p className="empty-overline">THE EDITOR IS READY</p>
       <h2>Your release notes will appear here</h2>
-      <p>Paste a public GitHub repository above and CommitCraft will turn its recent history into a focused, copy-ready changelog.</p>
+      <p className="empty-description">Paste a public GitHub repository above and CommitCraft will turn its recent history into a focused, copy-ready changelog.</p>
       <div className="empty-hints"><span><Icon name="check" size={14} />Conventional commits grouped</span><span><Icon name="check" size={14} />Merge commits filtered</span><span><Icon name="check" size={14} />Markdown ready</span></div>
     </div>
   );
@@ -69,7 +61,7 @@ function EmptyPreview() {
 function LoadingPreview({ hasPreviousResult }) {
   return (
     <div className={`loading-preview ${hasPreviousResult ? 'loading-with-result' : ''}`} aria-busy="true">
-      <div className="loading-line loading-line-wide" /><div className="loading-line" /><div className="loading-line loading-line-short" />
+      <p className="loading-overline">PREPARING YOUR EDITION</p><div className="loading-line loading-line-wide" /><div className="loading-line" /><div className="loading-line loading-line-short" />
       <div className="loading-section"><div className="loading-line loading-line-title" /><div className="loading-line" /><div className="loading-line" /><div className="loading-line loading-line-short" /></div>
       <p><span className="spinner" />Fetching repository history…</p>
     </div>
@@ -92,7 +84,7 @@ function ResultPreview({ result, loading, onCopy, onDownload, copyState }) {
           <button className="button button-quiet" type="button" onClick={onDownload}><Icon name="download" size={16} />Download</button>
         </div>
       </div>
-      <div className="result-meta"><a href={repository.url} target="_blank" rel="noreferrer"><Icon name="github" size={15} />{repository.fullName}</a><span>·</span><span>{stats.includedCount} {stats.includedCount === 1 ? 'entry' : 'entries'}</span><span>·</span><span>{sectionCount} {sectionCount === 1 ? 'section' : 'sections'}</span></div>
+      <div className="result-meta"><a href={repository.url} target="_blank" rel="noreferrer"><Icon name="github" size={15} />{repository.fullName}</a><span className="meta-separator">/</span><span>{stats.includedCount} {stats.includedCount === 1 ? 'entry' : 'entries'}</span><span className="meta-separator">/</span><span>{sectionCount} {sectionCount === 1 ? 'section' : 'sections'}</span></div>
       {metadata.truncated && <div className="notice notice-amber"><Icon name="alert" size={17} /><div><strong>History is truncated</strong><span>GitHub returned more commits than this analysis includes. These notes cover the first {metadata.fetchedCount ?? 'available'} commits.</span></div></div>}
       {isEmpty ? <div className="notes-empty"><div className="empty-icon small"><Icon name="spark" size={18} /></div><h3>No release-note entries found</h3><p>We found {stats.inputCount} {stats.inputCount === 1 ? 'commit' : 'commits'}, but none matched the release-note categories. Try another repository.</p></div> : <div className="notes-card"><pre aria-label="Generated Markdown">{notes.markdown}</pre></div>}
       {notes.warnings.length > 0 && <details className="warnings"><summary><Icon name="alert" size={15} />{notes.warnings.length} {notes.warnings.length === 1 ? 'note' : 'notes'} about this analysis</summary><ul>{notes.warnings.map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}</ul></details>}
@@ -214,12 +206,12 @@ export default function App() {
   const errorDetails = error ? error : null;
   return (
     <div className="app-shell">
-      <header className="topbar"><a className="brand" href="/" aria-label="CommitCraft home"><span className="brand-icon"><Icon name="spark" size={18} /></span><span>Commit<span>Craft</span></span></a><div className="topbar-status"><span className="status-dot" />GitHub analysis <span className="status-divider" /> <span className="status-muted">No token required</span></div></header>
+       <header className="topbar"><a className="brand" href="/" aria-label="CommitCraft home"><span className="brand-icon"><Icon name="spark" size={18} /></span><span>Commit<span>Craft</span></span></a><div className="topbar-status"><span className="status-dot" />GitHub analysis <span className="status-divider" /> <span className="status-muted">Public repositories · no token required</span></div></header>
       <main>
-        <section className="hero"><div className="hero-kicker"><span className="kicker-line" />DEVELOPER TOOLKIT</div><h1>Release notes,<br /><em>without the busywork.</em></h1><p className="hero-copy">Turn a GitHub repository’s commit history into clear, structured Markdown your team can ship.</p>
+         <section className="hero"><div className="hero-copy-column"><div className="hero-kicker"><span className="kicker-line" />RELEASE NOTES STUDIO</div><h1>Release notes,<br /><em>without the busywork.</em></h1><p className="hero-copy">Turn a GitHub repository’s commit history into clear, structured Markdown your team can ship.</p></div><div className="hero-aside"><span className="hero-aside-number">01</span><p>From commit history<br />to a considered release.</p><span className="hero-aside-rule" /></div>
           <form className="analysis-form" onSubmit={submit} noValidate>
-            <label htmlFor="repository">GitHub repository</label>
-            <div className={`input-row ${inputError ? 'has-error' : ''}`}><div className="input-prefix"><Icon name="github" size={18} /></div><input id="repository" name="repository" type="text" value={repositoryInput} onChange={(event) => { setRepositoryInput(event.target.value); if (inputError) setInputError(''); }} placeholder="owner / repository" autoComplete="off" spellCheck="false" aria-invalid={Boolean(inputError)} aria-describedby={inputError ? 'repository-error repository-help' : 'repository-help'} /><button className="analyze-button" type="submit" disabled={loading}>{loading ? <><span className="spinner" />Analyzing</> : <>Analyze <Icon name="arrow" size={17} /></>}</button></div>
+             <div className="form-label-row"><label htmlFor="repository">GitHub repository</label><span>STEP 01 / SOURCE</span></div>
+             <div className={`input-row ${inputError ? 'has-error' : ''}`}><div className="input-prefix"><Icon name="github" size={18} /></div><input id="repository" name="repository" type="text" value={repositoryInput} onChange={(event) => { setRepositoryInput(event.target.value); if (inputError) setInputError(''); }} placeholder="owner / repository" autoComplete="off" spellCheck="false" aria-invalid={Boolean(inputError)} aria-describedby={inputError ? 'repository-error repository-help' : 'repository-help'} /><button className="analyze-button" type="submit" disabled={loading} aria-label="Analyze repository and generate release notes">{loading ? <><span className="spinner" />Analyzing</> : <>Generate release notes <Icon name="arrow" size={17} /></>}</button></div>
             <div className="form-foot"><span id="repository-help">Use <code>owner/repository</code> or a GitHub URL</span>{inputError && <span className="field-error" id="repository-error" role="alert"><Icon name="alert" size={14} />{inputError}</span>}</div>
           </form>
         </section>
@@ -227,10 +219,10 @@ export default function App() {
         {errorDetails && <div className={`error-banner ${result ? 'has-result' : ''}`} role="alert"><div className="error-icon"><Icon name="alert" size={19} /></div><div className="error-copy"><strong>{errorDetails.title}</strong><span>{errorDetails.message}</span>{errorDetails.category && <small>Reference: {errorDetails.category}</small>}</div><button className="button button-retry" type="button" onClick={retry}><Icon name="refresh" size={16} />Retry</button></div>}
 
        <section className="workspace" aria-live="polite"><div className="workspace-header"><div><p className="eyebrow">Workspace</p><h2>{result ? 'Your release notes' : 'Start with a repository'}</h2></div>{(result || repositoryInput || error) && <button className="new-analysis" type="button" onClick={reset}>New analysis</button>}</div>
-          <div className="workspace-grid"><aside className="insight-panel"><div className="insight-top"><span className="panel-label">WHAT YOU’LL GET</span><span className="panel-number">01—03</span></div><div className="insight-list"><div className="insight-item"><span className="insight-icon indigo"><Icon name="spark" size={16} /></span><div><strong>Structured sections</strong><p>Features, fixes, performance, and more.</p></div></div><div className="insight-item"><span className="insight-icon cyan"><Icon name="check" size={16} /></span><div><strong>Clean commit history</strong><p>Duplicates and merge noise filtered out.</p></div></div><div className="insight-item"><span className="insight-icon amber"><Icon name="download" size={16} /></span><div><strong>Ready to ship</strong><p>Copy or download sanitized Markdown.</p></div></div></div><div className="insight-footer"><span className="mini-orbit" /><span>Deterministic output</span></div></aside><div className="preview-panel">{loading && !result ? <LoadingPreview hasPreviousResult={false} /> : result ? <ResultPreview result={result} loading={loading} onCopy={copyMarkdown} onDownload={downloadMarkdown} copyState={copyState} /> : <EmptyPreview />}</div></div>
+           <div className="workspace-grid"><aside className="insight-panel"><div className="insight-top"><span className="panel-label">THE EDITION</span><span className="panel-number">01—03</span></div><div className="insight-list"><div className="insight-item"><span className="insight-icon olive"><Icon name="spark" size={16} /></span><div><strong>Structured sections</strong><p>Features, fixes, performance, and more.</p></div></div><div className="insight-item"><span className="insight-icon copper"><Icon name="check" size={16} /></span><div><strong>Clean commit history</strong><p>Duplicates and merge noise filtered out.</p></div></div><div className="insight-item"><span className="insight-icon stone"><Icon name="download" size={16} /></span><div><strong>Ready to ship</strong><p>Copy or download sanitized Markdown.</p></div></div></div><div className="insight-footer"><span className="mini-orbit" /><span>Deterministic output</span></div></aside><div className="preview-panel">{loading && !result ? <LoadingPreview hasPreviousResult={false} /> : result ? <ResultPreview result={result} loading={loading} onCopy={copyMarkdown} onDownload={downloadMarkdown} copyState={copyState} /> : <EmptyPreview />}</div></div>
         </section>
 
-        {result && <div className="stats-row"><Stat value={result.notes.stats.includedCount} label="entries included" accent="stat-indigo" /><Stat value={result.notes.stats.filteredCount} label="merge commits filtered" accent="stat-cyan" /><Stat value={result.metadata.truncated ? 'Partial' : 'Complete'} label="history coverage" accent={result.metadata.truncated ? 'stat-amber' : 'stat-emerald'} />{result.metadata.rateLimit?.remaining != null && <Stat value={result.metadata.rateLimit.remaining} label="API calls remaining" accent="stat-emerald" />}</div>}
+         {result && <div className="stats-row"><Stat value={result.notes.stats.includedCount} label="entries included" accent="stat-olive" /><Stat value={result.notes.stats.filteredCount} label="merge commits filtered" accent="stat-copper" /><Stat value={result.metadata.truncated ? 'Partial' : 'Complete'} label="history coverage" accent={result.metadata.truncated ? 'stat-copper' : 'stat-olive'} />{result.metadata.rateLimit?.remaining != null && <Stat value={result.metadata.rateLimit.remaining} label="API calls remaining" accent="stat-olive" />}</div>}
       </main>
       <footer className="footer"><span>CommitCraft <span className="footer-dot">·</span> Deterministic release notes from your commit history</span><span className="footer-right"><Icon name="clock" size={13} /> Bounded to the latest 100 commits</span></footer>
     </div>
