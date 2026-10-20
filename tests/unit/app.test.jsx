@@ -85,6 +85,23 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+function installClipboardFallback(execCommandImplementation) {
+  const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+  const execCommand = vi.fn(execCommandImplementation);
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+  Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand });
+  return {
+    execCommand,
+    restore() {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else delete navigator.clipboard;
+      if (originalExecCommand) Object.defineProperty(document, 'execCommand', originalExecCommand);
+      else delete document.execCommand;
+    },
+  };
+}
+
 beforeEach(() => {
   fetchGithubRepositoryMock.mockReset();
   createGithubClientMock.mockReset();
@@ -185,7 +202,11 @@ describe('App', () => {
 
   it.each([
     ['not-found', 'Repository unavailable', 'could not find or expose'],
+    ['unauthorized', 'GitHub authentication failed', 'Try again or check your connection'],
+    ['forbidden', 'Access denied by GitHub', 'may be private or GitHub has denied access'],
     ['rate-limit', 'GitHub rate limit reached', 'Wait for the rate limit to reset'],
+    ['too-many-requests', 'GitHub is throttling requests', 'Wait a moment and retry'],
+    ['invalid-repository', 'Repository format is invalid', 'Use owner/repository or a github.com repository URL'],
     ['network', 'Connection interrupted', 'could not reach GitHub'],
     ['timeout', 'Request timed out', 'took too long to respond'],
     ['malformed-response', 'Unexpected GitHub response', 'could not understand'],
@@ -276,6 +297,41 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Copy release notes as Markdown' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Copy release notes as Markdown' })).toHaveTextContent('Copy failed'));
     expect(screen.getByLabelText('Generated Markdown')).toBeInTheDocument();
+  });
+
+  it('uses the clipboard fallback and removes its temporary textarea after success', async () => {
+    fetchGithubRepositoryMock.mockResolvedValue(retrieved());
+    const fallback = installClipboardFallback(() => true);
+    try {
+      renderApp();
+      submitRepository('octo/hello-world');
+      await waitFor(() => expect(screen.getByLabelText('Generated Markdown')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Copy release notes as Markdown' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Copy release notes as Markdown' })).toHaveTextContent('Copied'));
+      expect(fallback.execCommand).toHaveBeenCalledWith('copy');
+      expect(document.body.querySelectorAll('textarea')).toHaveLength(0);
+    } finally {
+      fallback.restore();
+    }
+  });
+
+  it('reports clipboard fallback failures and removes its temporary textarea', async () => {
+    fetchGithubRepositoryMock.mockResolvedValue(retrieved());
+    const fallback = installClipboardFallback(() => { throw new Error('copy unavailable'); });
+    try {
+      renderApp();
+      submitRepository('octo/hello-world');
+      await waitFor(() => expect(screen.getByLabelText('Generated Markdown')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Copy release notes as Markdown' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Copy release notes as Markdown' })).toHaveTextContent('Copy failed'));
+      expect(screen.getByLabelText('Generated Markdown')).toBeInTheDocument();
+      expect(fallback.execCommand).toHaveBeenCalledWith('copy');
+      expect(document.body.querySelectorAll('textarea')).toHaveLength(0);
+    } finally {
+      fallback.restore();
+    }
   });
 
   it('downloads Markdown with a sanitized repository filename', async () => {

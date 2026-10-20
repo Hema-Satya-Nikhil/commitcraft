@@ -2,11 +2,11 @@
 
 CommitCraft will turn GitHub repository commit history into readable, deterministic release notes.
 
-This repository implements **Milestone 4: production UI and application integration**, building on the deterministic domain engine from `f3ffd22` and bounded GitHub integration from `8d00f53`. The frontend is a static Vite application; no server-side proxy, database, authentication, or AI service is required.
+This repository contains the hardened production UI and application integration built on the deterministic domain engine from `f3ffd22` and bounded GitHub integration from `8d00f53`. The frontend is a static Vite application; no server-side proxy, database, authentication, or AI service is required.
 
 ## Requirements
 
-- Node.js `22.14.0` (see `.nvmrc`)
+- Node.js `22.14.0` or a compatible Node 22 release (see `.nvmrc`)
 - npm
 - Docker for container verification
 
@@ -36,6 +36,8 @@ npm test
 
 Tests do not call GitHub or require network access after dependencies have been installed.
 
+The project pins Node.js `22.14.0` in `.nvmrc` and accepts compatible Node 22 releases through the `package.json` engine range (`>=22.14.0 <23`). Use the `.nvmrc` version for the most reproducible local and container setup.
+
 ## Production build
 
 ```bash
@@ -53,21 +55,21 @@ docker build -t commitcraft .
 docker run --rm -p 4173:4173 commitcraft
 ```
 
-Open `http://localhost:4173` after the container starts.
+Open `http://localhost:4173` after the container starts. Docker build and runtime verification are environment-dependent; do not treat these commands as verified unless Docker is available and they have been run successfully.
 
 ## Configuration and secrets
 
 No environment variables are currently required. `.env.example` documents this and is included to make the policy explicit. Do not put GitHub tokens in `VITE_*` variables: Vite embeds those values into the browser bundle, making them public.
 
-## Planned milestones
+## Implementation status
 
 1. Foundation and reproducible build (complete)
 2. Independent deterministic release-note domain engine (complete)
 3. GitHub API integration with bounded pagination, Link-header detection, rate-limit handling, and cancellation (complete)
-4. Responsive production UI and application integration (current milestone)
-5. Hardening, accessibility, and release verification
+4. Responsive production UI and application integration (complete)
+5. Hardening and submission verification (current)
 
-## Domain API (Milestone 2)
+## Domain API
 
 All public functions are named ES module exports from `src/domain/index.js` and their individual modules. They have no external imports, UI dependencies, network access, clock reads, randomness, or input mutation. They operate on ordinary JavaScript data records; no retrieval is performed.
 
@@ -111,7 +113,7 @@ console.log(result.markdown);
 
 Run the focused offline domain suite with `npm test -- tests/unit`. It covers malformed inputs, classification, filtering, SHA-only deduplication, ordering, metadata/warnings, exact Markdown, repeatability, and plain-Node execution with browser/network/clock/randomness access disabled. `npm test` runs this suite plus the foundation test.
 
-## GitHub API integration (Milestone 3)
+## GitHub API integration
 
 The infrastructure API is exported from `src/infrastructure/index.js` and uses GitHub's public REST API without requiring authentication:
 
@@ -151,11 +153,11 @@ When a next page exists, retrieval stops after the first page, `historyComplete`
 
 Pass an `AbortSignal` to `fetchRepository` to cancel repository or commit requests. `timeoutMs` bounds each request; cancellation and timeout are reported separately. The infrastructure makes no automatic retries and does not contain UI stale-response logic. Its tests use mocked fetch responses only; `npm test` remains offline.
 
-## Application workflow (Milestone 4)
+## Application workflow
 
 The production workflow is implemented in `src/App.jsx` and uses the domain and infrastructure contracts directly. Enter a public GitHub URL or `owner/repository`, then submit with the button or Enter. The interface validates locally before making a request, shows a loading state, and renders deterministic Markdown from the retrieved commits. It provides repository metadata, entry and filtered-merge counts, complete/truncated history coverage, prominent incomplete-history warnings, empty-history messaging, retry, and New analysis controls.
 
-The result toolbar copies the generated Markdown to the clipboard and downloads the same content as a sanitized `<repository>-release-notes.md` file. Clipboard failure is shown as failure feedback; no success state is displayed unless the browser operation resolves. New analyses cancel an in-flight request, and request identities prevent stale responses from replacing the latest result. Intentional cancellation is not shown as an ordinary network error. The UI keeps a previous successful result visible during an appropriate retry.
+The result toolbar copies the generated Markdown to the clipboard and downloads the same content as a sanitized `<repository>-release-notes.md` file. Clipboard failure is shown as failure feedback; no success state is displayed unless the browser operation resolves. **Export PDF** prepares a print-ready release-notes sheet and opens the browser's print dialog; choose **Save as PDF** in that dialog to finish the export. New analyses cancel an in-flight request, and request identities prevent stale responses from replacing the latest result. Intentional cancellation is not shown as an ordinary network error. The UI keeps a previous successful result visible during an appropriate retry.
 
 The UI has responsive desktop/mobile layouts, keyboard-visible focus states, semantic labels and live status regions, restrained loading motion, and `prefers-reduced-motion` support. No GitHub token or `VITE_*` secret is used by the frontend.
 
@@ -168,6 +170,17 @@ The build output is the `dist/` directory. For Vercel, import this repository an
 - Output directory: `dist`
 - Install command: `npm ci`
 
-No environment variables are required. After deployment, open the assigned HTTPS URL and verify that the initial workspace renders, submit a known public repository, confirm the Markdown result, and test Copy Markdown and Download. The application calls GitHub's public REST API directly from the browser, so a live verification requires browser network access and GitHub availability.
+No environment variables are required. No public deployment is claimed by this repository. The application calls GitHub's public REST API directly from the browser, so a live verification requires browser network access and GitHub availability.
+
+### Manual end-to-end verification
+
+Run the application with `npm run dev`, then verify the following in a browser:
+
+1. Enter a known public repository as `owner/repository` or a GitHub URL and submit it. Confirm that repository analysis completes and the generated Markdown contains the expected release-note sections.
+2. Analyze a repository with more than 100 recent commits. Confirm that the UI shows **History is truncated**, reports the first 100 commits, and includes the retrieval warning in the generated Markdown.
+3. Use **Copy Markdown** and paste into a plain-text editor. Confirm the pasted text exactly matches the generated Markdown.
+4. Use **Download** and confirm that the downloaded file is a sanitized `<repository>-release-notes.md` file containing the same Markdown.
+5. Use **Export PDF**, confirm that the browser print dialog opens, select **Save as PDF**, and inspect the resulting PDF for the repository title, summary, sections, commit links or SHAs, and any truncation warnings.
+6. Repeat the flow at a narrow viewport and with keyboard-only interaction. Confirm that the layout remains usable, focus states are visible, and errors are announced clearly.
 
 For a local static verification, run `npm run build` and serve `dist/` with any static server. The included Dockerfile builds the Vite assets and serves them with Nginx on internal port `4173`.

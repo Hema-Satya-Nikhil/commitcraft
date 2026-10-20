@@ -214,10 +214,13 @@ export default function App() {
         area.value = markdown;
         area.setAttribute('readonly', '');
         area.style.position = 'fixed'; area.style.opacity = '0';
-        document.body.appendChild(area); area.select();
-        const copied = document.execCommand('copy');
-        area.remove();
-        if (!copied) throw new Error('Copy command failed');
+        document.body.appendChild(area);
+        try {
+          area.select();
+          if (!document.execCommand('copy')) throw new Error('Copy command failed');
+        } finally {
+          area.remove();
+        }
       }
       setCopyState('success');
     } catch {
